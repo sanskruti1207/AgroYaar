@@ -27,8 +27,18 @@ else:
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB Max upload size
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
-# Ensure upload directory exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Ensure upload directory exists with write-access verification
+try:
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    # Test if the directory is actually writable by writing a dummy file
+    test_file_path = os.path.join(app.config['UPLOAD_FOLDER'], '.write_test')
+    with open(test_file_path, 'w') as f:
+        f.write('test')
+    os.remove(test_file_path)
+except (PermissionError, OSError):
+    # Fallback to /tmp/uploads/ if the configured directory is read-only
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads/'
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Cache models
 ML_RECOMMEND_MODEL = None

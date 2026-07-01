@@ -1,14 +1,31 @@
 import sqlite3
 import os
 
+DB_PATH = 'history.db'
+
+# Check environment variables as a first pass
 is_serverless = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
 if is_serverless:
     DB_PATH = '/tmp/history.db'
-else:
-    DB_PATH = 'history.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    global DB_PATH
+    
+    # Bulletproof check: try to write a test table. If it fails, fallback to /tmp/history.db
+    try:
+        db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+        if not os.access(db_dir, os.W_OK):
+            raise sqlite3.OperationalError("Database directory is read-only")
+            
+        conn = sqlite3.connect(DB_PATH)
+        # Validate write privileges
+        conn.execute("CREATE TABLE IF NOT EXISTS write_check (id INTEGER PRIMARY KEY)")
+        conn.execute("DROP TABLE IF EXISTS write_check")
+        conn.commit()
+    except (sqlite3.OperationalError, PermissionError, OSError):
+        DB_PATH = '/tmp/history.db'
+        conn = sqlite3.connect(DB_PATH)
+        
     conn.row_factory = sqlite3.Row
     return conn
 
