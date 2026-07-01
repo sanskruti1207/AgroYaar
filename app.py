@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 # Use ONNX Runtime for lightweight serverless deployment
 try:
     import onnxruntime as ort
-except ImportError:
+except BaseException:
     ort = None
 
 import database
@@ -38,9 +38,11 @@ CLASS_NAMES = None
 def load_models():
     global ML_RECOMMEND_MODEL, ONNX_DISEASE_MODEL, CLASS_NAMES
     
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # Load Crop Recommendation Model
     if ML_RECOMMEND_MODEL is None:
-        model_path = 'model/model.pkl'
+        model_path = os.path.join(base_dir, 'model', 'model.pkl')
         if os.path.exists(model_path):
             try:
                 with open(model_path, 'rb') as f:
@@ -51,7 +53,7 @@ def load_models():
                 
     # Load ONNX Disease Model
     if ONNX_DISEASE_MODEL is None and ort is not None:
-        onnx_path = 'model/disease_model.onnx'
+        onnx_path = os.path.join(base_dir, 'model', 'disease_model.onnx')
         if os.path.exists(onnx_path):
             try:
                 sess_options = ort.SessionOptions()
@@ -64,7 +66,7 @@ def load_models():
                 
     # Load Class Names
     if CLASS_NAMES is None:
-        class_path = 'model/class_names.pkl'
+        class_path = os.path.join(base_dir, 'model', 'class_names.pkl')
         if os.path.exists(class_path):
             try:
                 with open(class_path, 'rb') as f:
