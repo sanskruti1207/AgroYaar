@@ -6,12 +6,11 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, send_file
 from werkzeug.utils import secure_filename
 
-# Defer TensorFlow import until first load to speed up startup or handle failure
+# Use ONNX Runtime for lightweight serverless deployment
 try:
-    import tensorflow as tf
-    from tensorflow.keras.preprocessing import image
+    import onnxruntime as ort
 except ImportError:
-    tf = None
+    ort = None
 
 import database
 from disease_data import DISEASE_DB, UI_LOCALIZATION
@@ -27,11 +26,11 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Cache models
 ML_RECOMMEND_MODEL = None
-TF_DISEASE_MODEL = None
+ONNX_DISEASE_MODEL = None
 CLASS_NAMES = None
 
 def load_models():
-    global ML_RECOMMEND_MODEL, TF_DISEASE_MODEL, CLASS_NAMES
+    global ML_RECOMMEND_MODEL, ONNX_DISEASE_MODEL, CLASS_NAMES
     
     # Load Crop Recommendation Model
     if ML_RECOMMEND_MODEL is None:
@@ -44,15 +43,18 @@ def load_models():
             except Exception as e:
                 print(f"Error loading recommendation model: {e}")
                 
-    # Load TensorFlow Disease Model
-    if TF_DISEASE_MODEL is None and tf is not None:
-        h5_path = 'model/disease_model.h5'
-        if os.path.exists(h5_path):
+    # Load ONNX Disease Model
+    if ONNX_DISEASE_MODEL is None and ort is not None:
+        onnx_path = 'model/disease_model.onnx'
+        if os.path.exists(onnx_path):
             try:
-                TF_DISEASE_MODEL = tf.keras.models.load_model(h5_path)
-                print("TensorFlow disease model loaded.")
+                sess_options = ort.SessionOptions()
+                sess_options.intra_op_num_threads = 1
+                sess_options.inter_op_num_threads = 1
+                ONNX_DISEASE_MODEL = ort.InferenceSession(onnx_path, sess_options)
+                print("ONNX disease model loaded.")
             except Exception as e:
-                print(f"Error loading TF model: {e}")
+                print(f"Error loading ONNX model: {e}")
                 
     # Load Class Names
     if CLASS_NAMES is None:
@@ -192,15 +194,21 @@ def predict_disease():
         relative_path = f"static/uploads/{filename}"
         
         # Run model prediction
-        if tf is not None and TF_DISEASE_MODEL is not None and CLASS_NAMES is not None:
+        if ort is not None and ONNX_DISEASE_MODEL is not None and CLASS_NAMES is not None:
             try:
-                # Standard preprocessing
-                img = image.load_img(filepath, target_size=(224, 224))
-                img_array = image.img_to_array(img)
+                # Preprocess image using Pillow (PIL)
+                from PIL import Image
+                img = Image.open(filepath).resize((224, 224))
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img_array = np.array(img, dtype=np.float32) / 255.0
                 img_array = np.expand_dims(img_array, axis=0)
-                img_array = img_array / 255.0
                 
-                predictions = TF_DISEASE_MODEL.predict(img_array)
+                # Run ONNX inference
+                input_name = ONNX_DISEASE_MODEL.get_inputs()[0].name
+                output_name = ONNX_DISEASE_MODEL.get_outputs()[0].name
+                predictions = ONNX_DISEASE_MODEL.run([output_name], {input_name: img_array})[0]
+                
                 pred_idx = np.argmax(predictions[0])
                 confidence = float(predictions[0][pred_idx]) * 100
                 
@@ -208,11 +216,11 @@ def predict_disease():
                 disease_key = CLASS_NAMES[pred_idx]
             except Exception as e:
                 print(f"Prediction crash: {e}")
-                # Fallback mock prediction if image read error or TF model fails
+                # Fallback mock prediction if image read error or ONNX fails
                 disease_key = 'tomato_early_blight'
                 confidence = 94.2
         else:
-            # Fallback mock prediction if TF is not installed
+            # Fallback mock prediction if ONNX is not installed/loaded
             import random
             fallback_classes = list(DISEASE_DB.keys())
             disease_key = random.choice(fallback_classes)

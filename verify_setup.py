@@ -46,27 +46,31 @@ def run_verification():
         return False
 
     # ----------------- 3. Test Disease Detection Model -----------------
-    print("\nTesting TensorFlow Disease Model loading and inference...")
+    print("\nTesting ONNX Disease Model loading and inference...")
     try:
-        import tensorflow as tf
+        import onnxruntime as ort
+        onnx_path = 'model/disease_model.onnx'
         
         # Load model and classes
-        model = tf.keras.models.load_model(disease_h5)
+        sess = ort.InferenceSession(onnx_path)
         with open(class_pkl, 'rb') as f:
             class_names = pickle.load(f)
             
-        print(f"[+] Successfully loaded Keras model and {len(class_names)} classes.")
+        print(f"[+] Successfully loaded ONNX session and {len(class_names)} classes.")
         
         # Run dummy inference
-        dummy_img = np.random.rand(1, 224, 224, 3)
-        predictions = model.predict(dummy_img)
+        dummy_img = np.random.rand(1, 224, 224, 3).astype(np.float32)
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        predictions = sess.run([output_name], {input_name: dummy_img})[0]
+        
         pred_idx = np.argmax(predictions[0])
         predicted_disease = class_names[pred_idx]
         confidence = float(predictions[0][pred_idx]) * 100
         
         print(f"[+] Inference success: Predicted class '{predicted_disease}' (Conf: {confidence:.2f}%)")
     except Exception as e:
-        print(f"[-] ERROR in TensorFlow disease model test: {e}")
+        print(f"[-] ERROR in ONNX disease model test: {e}")
         return False
 
     # ----------------- 4. Test Database Operations -----------------
