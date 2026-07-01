@@ -17,7 +17,13 @@ from disease_data import DISEASE_DB, UI_LOCALIZATION
 
 app = Flask(__name__)
 app.secret_key = 'agroyaar_secret_key_for_session'
-app.config['UPLOAD_FOLDER'] = 'static/uploads/'
+
+is_serverless = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+if is_serverless:
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads/'
+else:
+    app.config['UPLOAD_FOLDER'] = 'static/uploads/'
+
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB Max upload size
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -84,6 +90,13 @@ def inject_translations():
         'current_lang': lang,
         'theme': session.get('theme', 'light')
     }
+
+from flask import send_from_directory
+
+# Custom route to serve uploads from the writable /tmp directory in serverless environments
+@app.route('/static/uploads/<path:filename>')
+def serve_uploads(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # ----------------- ROUTES -----------------
 

@@ -1,7 +1,11 @@
 import sqlite3
 import os
 
-DB_PATH = 'history.db'
+is_serverless = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+if is_serverless:
+    DB_PATH = '/tmp/history.db'
+else:
+    DB_PATH = 'history.db'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
